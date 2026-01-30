@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDFtoQuiz - 결과보기</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <!-- 커스텀 CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <!-- 네비게이션 바 -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand" href="#">📚 PDFtoQuiz</a>
+      <div class="navbar-text text-white">
+        <span class="me-3">{{ username }}님</span>
+        <a href="{{ url_for('admin') }}" class="btn btn-outline-light btn-sm me-2">관리자</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">로그아웃</a>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container mt-5 mb-5">
+    <!-- 점수 요약 -->
+    <div class="result-summary text-center mb-5">
+      <div class="card shadow-lg">
+        <div class="card-body p-5">
+          <h2 class="mb-4">시험 결과</h2>
+          <div class="score-display">
+            <h1 class="display-1 mb-3">
+              <span class="score-number">{{ score }}</span>
+              <span class="text-muted"> / </span>
+              <span class="text-muted">{{ total }}</span>
+            </h1>
+            <h4 class="text-muted mb-4">총 {{ total }}문제 중 {{ score }}문제 정답</h4>
+            
+            {% set percentage = (score / total * 100) | int %}
+            <div class="progress mb-3" style="height: 30px;">
+              <div class="progress-bar 
+                          {% if percentage >= 80 %}bg-success
+                          {% elif percentage >= 60 %}bg-primary
+                          {% elif percentage >= 40 %}bg-warning
+                          {% else %}bg-danger{% endif %}" 
+                   role="progressbar" 
+                   style="width: {{ percentage }}%"
+                   aria-valuenow="{{ percentage }}" 
+                   aria-valuemin="0" 
+                   aria-valuemax="100">
+                <strong>{{ percentage }}%</strong>
+              </div>
+            </div>
+            
+            <p class="lead">
+              {% if percentage >= 80 %}
+                <i class="bi bi-emoji-smile-fill text-success"></i> 훌륭합니다!
+              {% elif percentage >= 60 %}
+                <i class="bi bi-emoji-smile text-primary"></i> 잘했습니다!
+              {% elif percentage >= 40 %}
+                <i class="bi bi-emoji-neutral text-warning"></i> 조금 더 노력하세요!
+              {% else %}
+                <i class="bi bi-emoji-frown text-danger"></i> 더 공부가 필요합니다!
+              {% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 문제별 상세 결과 -->
+    <div class="detailed-results mb-5">
+      <h3 class="mb-4">문제별 상세 결과</h3>
+      
+      {% for result in detailed_results %}
+      <div class="card mb-3 {% if result.is_correct %}border-success{% else %}border-danger{% endif %}">
+        <div class="card-header {% if result.is_correct %}bg-success bg-opacity-10{% else %}bg-danger bg-opacity-10{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">문제 {{ result.question_num }}</h5>
+            <span class="badge {% if result.is_correct %}bg-success{% else %}bg-danger{% endif %}">
+              {% if result.is_correct %}
+                <i class="bi bi-check-circle-fill"></i> 정답
+              {% else %}
+                <i class="bi bi-x-circle-fill"></i> 오답
+              {% endif %}
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="question-text mb-3"><strong>문제:</strong> {{ result.question }}</p>
+          
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <p class="mb-1"><strong>보기:</strong></p>
+              <ul class="list-unstyled ms-3">
+                <li class="{% if result.student_answer == 'A' %}fw-bold{% endif %}{% if result.correct_answer == 'A' %} text-success{% endif %}">
+                  A. {{ result.example_a }}
+                  {% if result.correct_answer == 'A' %}<i class="bi bi-check-circle-fill text-success ms-1"></i>{% endif %}
+                </li>
+                <li class="{% if result.student_answer == 'B' %}fw-bold{% endif %}{% if result.correct_answer == 'B' %} text-success{% endif %}">
+                  B. {{ result.example_b }}
+                  {% if result.correct_answer == 'B' %}<i class="bi bi-check-circle-fill text-success ms-1"></i>{% endif %}
+                </li>
+                <li class="{% if result.student_answer == 'C' %}fw-bold{% endif %}{% if result.correct_answer == 'C' %} text-success{% endif %}">
+                  C. {{ result.example_c }}
+                  {% if result.correct_answer == 'C' %}<i class="bi bi-check-circle-fill text-success ms-1"></i>{% endif %}
+                </li>
+                <li class="{% if result.student_answer == 'D' %}fw-bold{% endif %}{% if result.correct_answer == 'D' %} text-success{% endif %}">
+                  D. {{ result.example_d }}
+                  {% if result.correct_answer == 'D' %}<i class="bi bi-check-circle-fill text-success ms-1"></i>{% endif %}
+                </li>
+              </ul>
+            </div>
+            <div class="col-md-6">
+              <p class="mb-1"><strong>선택한 답:</strong> 
+                <span class="badge {% if result.is_correct %}bg-success{% else %}bg-danger{% endif %}">
+                  {{ result.student_answer }}
+                </span>
+              </p>
+              <p class="mb-1"><strong>정답:</strong> 
+                <span class="badge bg-success">{{ result.correct_answer }}</span>
+              </p>
+            </div>
+          </div>
+          
+          <div class="alert alert-info mb-0">
+            <strong><i class="bi bi-lightbulb-fill"></i> 해설:</strong> {{ result.explanation }}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    
+    <!-- 과거 기록 -->
+    {% if all_attempts %}
+    <div class="history-section mb-5">
+      <h3 class="mb-4">과거 기록</h3>
+      <div class="card">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th>시간</th>
+                  <th>점수</th>
+                  <th>정답률</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for attempt in all_attempts %}
+                <tr>
+                  <td>{{ attempt.date }}</td>
+                  <td>{{ attempt.time }}</td>
+                  <td>{{ attempt.score }} / {{ attempt.total }}</td>
+                  <td>
+                    {% set percentage = (attempt.score / attempt.total * 100) | int %}
+                    <div class="progress" style="height: 20px; width: 150px;">
+                      <div class="progress-bar 
+                                  {% if percentage >= 80 %}bg-success
+                                  {% elif percentage >= 60 %}bg-primary
+                                  {% elif percentage >= 40 %}bg-warning
+                                  {% else %}bg-danger{% endif %}" 
+                           role="progressbar" 
+                           style="width: {{ percentage }}%">
+                        {{ percentage }}%
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+    <!-- 액션 버튼 -->
+    <div class="text-center">
+      <a href="{{ url_for('quiz') }}" class="btn btn-primary btn-lg">
+        <i class="bi bi-arrow-clockwise"></i> 다시 문제풀기
+      </a>
+    </div>
+  </div>
+  
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

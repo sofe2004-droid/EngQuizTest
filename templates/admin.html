@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDFtoQuiz - 관리자</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- 커스텀 CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <!-- 네비게이션 바 -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand" href="#">📚 PDFtoQuiz</a>
+      <div class="navbar-text text-white">
+        <span class="me-3">{{ username }}님 환영합니다!</span>
+        <a href="{{ url_for('quiz') }}" class="btn btn-outline-light btn-sm me-2">문제풀기</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">로그아웃</a>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container mt-5">
+    <div class="row justify-content-center">
+      <div class="col-md-8">
+        <!-- 관리자 페이지 헤더 -->
+        <div class="text-center mb-4">
+          <h2>⚙️ 관리자 페이지</h2>
+          <p class="text-muted">OpenAI API를 사용하여 영어 문법 문제를 자동 생성합니다.</p>
+        </div>
+        
+        <!-- 현재 문제 수 표시 -->
+        <div class="card shadow mb-4">
+          <div class="card-body text-center">
+            <h5 class="card-title">현재 문제 수</h5>
+            <h1 class="display-4 text-primary">{{ total_questions }}</h1>
+            <p class="text-muted">quiz.csv 파일에 저장된 문제 개수</p>
+          </div>
+        </div>
+        
+        <!-- 문제 생성 섹션 -->
+        <div class="card shadow">
+          <div class="card-body">
+            <h5 class="card-title mb-4">문제 생성</h5>
+            
+            <!-- 생성 조건 표시 -->
+            <div class="alert alert-info">
+              <h6>생성 조건</h6>
+              <ul class="mb-0">
+                <li>대상: 고등학교 학생</li>
+                <li>난이도: 쉬움</li>
+                <li>출제 범위: 영문법 전체 (시제, 관계대명사, 비교급, 수동태, 조동사 등)</li>
+                <li>생성 개수: 10개 (고정)</li>
+                <li>모델: Google Gemini 2.5 Flash</li>
+              </ul>
+            </div>
+            
+            <!-- 생성 버튼 -->
+            <div class="text-center">
+              <button id="generateBtn" class="btn btn-primary btn-lg">
+                <span id="btn-text">문제 10개 생성하기</span>
+                <span id="btn-spinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display: none;"></span>
+              </button>
+            </div>
+            
+            <!-- 로딩 메시지 -->
+            <div id="loading" class="text-center mt-3" style="display: none;">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-2 text-muted">문제 생성 중... 잠시만 기다려주세요. (약 10-30초 소요)</p>
+            </div>
+            
+            <!-- 결과 메시지 -->
+            <div id="result" class="mt-3"></div>
+          </div>
+        </div>
+        
+        <!-- 주의사항 -->
+        <div class="alert alert-warning mt-4">
+          <h6>⚠️ 주의사항</h6>
+          <ul class="mb-0">
+            <li>.env 파일에 Google AI API 키가 올바르게 설정되어 있어야 합니다.</li>
+            <li>Google AI Studio(<a href="https://aistudio.google.com/apikey" target="_blank">https://aistudio.google.com/apikey</a>)에서 무료로 API 키를 발급받을 수 있습니다.</li>
+            <li>생성된 문제는 quiz.csv 파일에 추가되며, 기존 문제는 유지됩니다.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <!-- 관리자 페이지 JavaScript -->
+  <script>
+    document.getElementById('generateBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('generateBtn');
+      const btnText = document.getElementById('btn-text');
+      const btnSpinner = document.getElementById('btn-spinner');
+      const loading = document.getElementById('loading');
+      const result = document.getElementById('result');
+      
+      // UI 초기화
+      result.innerHTML = '';
+      
+      // 버튼 비활성화 및 로딩 표시
+      btn.disabled = true;
+      btnText.textContent = '생성 중...';
+      btnSpinner.style.display = 'inline-block';
+      loading.style.display = 'block';
+      
+      try {
+        // API 호출
+        const response = await fetch('/generate-quiz', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          // 성공
+          result.innerHTML = `
+            <div class="alert alert-success" role="alert">
+              <h5 class="alert-heading">✅ 성공!</h5>
+              <p>${data.message}</p>
+              <hr>
+              <p class="mb-0">이제 문제풀기 페이지에서 새로운 문제를 풀 수 있습니다.</p>
+            </div>
+          `;
+          
+          // 문제 수 업데이트 (페이지 새로고침)
+          setTimeout(() => {
+            location.reload();
+          }, 2000);
+          
+        } else {
+          // 실패
+          result.innerHTML = `
+            <div class="alert alert-danger" role="alert">
+              <h5 class="alert-heading">❌ 오류 발생</h5>
+              <p>${data.error || '알 수 없는 오류가 발생했습니다.'}</p>
+              <hr>
+              <p class="mb-0">
+                <strong>해결 방법:</strong><br>
+                - .env 파일에 Google AI API 키가 올바르게 설정되어 있는지 확인하세요.<br>
+                - Google AI Studio에서 API 키를 발급받았는지 확인하세요.<br>
+                - 네트워크 연결 상태를 확인하세요.
+              </p>
+            </div>
+          `;
+        }
+        
+      } catch (error) {
+        // 네트워크 오류
+        result.innerHTML = `
+          <div class="alert alert-danger" role="alert">
+            <h5 class="alert-heading">❌ 네트워크 오류</h5>
+            <p>서버와의 통신 중 오류가 발생했습니다.</p>
+            <hr>
+            <p class="mb-0">${error.message}</p>
+          </div>
+        `;
+      } finally {
+        // 버튼 활성화 및 로딩 숨김
+        btn.disabled = false;
+        btnText.textContent = '문제 10개 생성하기';
+        btnSpinner.style.display = 'none';
+        loading.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

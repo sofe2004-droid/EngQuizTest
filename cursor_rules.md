@@ -1,0 +1,1051 @@
+# PDFtoQuiz 프로젝트 Cursor Rules
+
+> 이 문서는 PDFtoQuiz 웹 애플리케이션 개발 시 AI가 반드시 준수해야 할 규칙과 가이드라인을 정의합니다.
+
+## 📋 목차
+
+1. [프로젝트 개요](#1-프로젝트-개요)
+2. [기술 스택](#2-기술-스택)
+3. [디렉토리 구조](#3-디렉토리-구조)
+4. [데이터 구조 정의](#4-데이터-구조-정의)
+5. [Flask 라우트 규칙](#5-flask-라우트-규칙)
+6. [핵심 비즈니스 로직](#6-핵심-비즈니스-로직)
+7. [에러 핸들링](#7-에러-핸들링)
+8. [보안 및 정책](#8-보안-및-정책)
+9. [코딩 컨벤션](#9-코딩-컨벤션)
+10. [금지 사항](#10-금지-사항)
+11. [필수 검증 사항](#11-필수-검증-사항)
+12. [테스트 가이드](#12-테스트-가이드)
+
+---
+
+## 1. 프로젝트 개요
+
+### 프로젝트명
+**PDFtoQuiz** - Flask 기반 퀴즈 학습 관리 시스템
+
+### 목적
+학생들이 로그인하여 랜덤 문제를 풀고 결과를 확인할 수 있는 로컬 서비스
+
+### 주요 기능
+1. **로그인**: SQLite DB 기반 사용자 인증
+2. **문제풀기**: CSV 파일에서 랜덤으로 5문제 출제
+3. **결과보기**: 채점 결과 표시 및 JSON 파일에 저장
+
+### 서비스 특성
+- 로컬 서비스 (Local 환경에서만 운영)
+- 테스트 및 학습용 애플리케이션
+- 단순하고 직관적인 UI/UX
+
+---
+
+## 2. 기술 스택
+
+### Backend
+- **Python**: 3.8 이상
+- **Flask**: 3.0.0
+- **pandas**: 2.1.4 (CSV 처리)
+- **SQLite3**: 내장 (회원 관리)
+
+### Frontend
+- **HTML5**
+- **CSS3**
+- **JavaScript** (ES6+)
+- **Bootstrap 5**: UI 프레임워크
+
+### 데이터 저장
+- **SQLite**: 회원 정보
+- **CSV**: 문제 데이터
+- **JSON**: 학생별 결과 데이터
+
+### 필수 패키지 (requirements.txt)
+```
+Flask==3.0.0
+pandas==2.1.4
+```
+
+---
+
+## 3. 디렉토리 구조
+
+### 전체 구조
+```
+PDFtoQuiz/
+├── app.py                 # Flask 메인 애플리케이션 (필수)
+├── database.db           # SQLite 회원 DB (자동 생성)
+├── requirements.txt      # Python 패키지 목록
+├── quiz/
+│   └── quiz.csv         # 문제 데이터 (기존 파일, 수정 금지)
+├── results/             # 학생별 결과 JSON 저장 디렉토리
+├── templates/           # Jinja2 템플릿 파일
+│   ├── login.html       # 로그인 페이지
+│   ├── quiz.html        # 문제풀기 페이지
+│   └── result.html      # 결과보기 페이지
+└── static/              # 정적 파일
+    ├── css/
+    │   └── style.css    # 커스텀 스타일
+    └── js/
+        └── quiz.js      # 문제풀기 클라이언트 로직
+```
+
+### 디렉토리 규칙
+- `quiz/` 디렉토리와 `quiz.csv` 파일은 **기존 파일이므로 수정 금지**
+- `results/` 디렉토리는 없으면 자동으로 생성해야 함
+- `database.db`는 첫 실행 시 자동 생성 및 초기화
+- 모든 템플릿 파일은 반드시 `templates/` 디렉토리에 위치
+- 모든 정적 파일은 반드시 `static/` 디렉토리에 위치
+
+---
+
+## 4. 데이터 구조 정의
+
+### 4.1 SQLite 데이터베이스
+
+#### users 테이블
+```sql
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+);
+```
+
+#### 필수 필드
+- `id`: 자동 증가 기본키
+- `username`: 중복 불가, NULL 불가 (학생 이름)
+- `password`: NULL 불가 (평문 저장)
+
+#### 초기 데이터
+```sql
+INSERT INTO users (username, password) VALUES ('홍길동', '1111');
+```
+
+#### 데이터베이스 접근 규칙
+- SQLite3 내장 모듈 사용
+- 연결 후 반드시 `connection.close()` 호출
+- SQL Injection 방지를 위해 파라미터 바인딩 사용
+  - 올바른 예: `cursor.execute("SELECT * FROM users WHERE username=?", (username,))`
+  - 잘못된 예: `cursor.execute(f"SELECT * FROM users WHERE username='{username}'")`
+
+### 4.2 CSV 파일 구조 (quiz.csv)
+
+#### 필수 컬럼
+| 컬럼명 | 타입 | 설명 | 필수 여부 |
+|--------|------|------|-----------|
+| Question | TEXT | 문제 내용 | 필수 |
+| Example_A | TEXT | 보기 A | 필수 |
+| Example_B | TEXT | 보기 B | 필수 |
+| Example_C | TEXT | 보기 C | 필수 |
+| Example_D | TEXT | 보기 D | 필수 |
+| Answer | TEXT | 정답 (A, B, C, D 중 하나) | 필수 |
+| Explanation | TEXT | 해설 | 필수 |
+
+#### CSV 읽기 규칙
+- pandas 사용: `pd.read_csv('quiz/quiz.csv', encoding='utf-8')`
+- 인코딩 오류 시 `encoding='cp949'` 또는 `encoding='euc-kr'` 시도
+- 컬럼명 대소문자 정확히 일치해야 함
+- 파일이 없거나 컬럼이 부족하면 에러 메시지 표시
+
+### 4.3 JSON 결과 파일 구조
+
+#### 파일명 형식
+`results/{username}.json`
+- 예: `results/홍길동.json`
+
+#### JSON 스키마
+```json
+{
+  "username": "홍길동",
+  "attempts": [
+    {
+      "date": "2026-01-29",
+      "time": "14:30:25",
+      "score": 4,
+      "total": 5,
+      "details": [
+        {
+          "question_num": 1,
+          "question_id": 15,
+          "correct": true
+        },
+        {
+          "question_num": 2,
+          "question_id": 7,
+          "correct": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 필드 정의
+- `username`: 학생 이름 (문자열)
+- `attempts`: 시도 기록 배열
+  - `date`: 시도 날짜 (YYYY-MM-DD 형식)
+  - `time`: 시도 시간 (HH:MM:SS 형식)
+  - `score`: 맞은 문제 수 (정수)
+  - `total`: 전체 문제 수 (항상 5)
+  - `details`: 문제별 상세 정보 배열
+    - `question_num`: 문제 번호 (1~5)
+    - `question_id`: CSV 파일의 행 인덱스 (0부터 시작)
+    - `correct`: 정답 여부 (boolean)
+
+#### JSON 저장 규칙
+- **절대 Overwrite 금지**: 기존 파일이 있으면 `attempts` 배열에 추가
+- 파일이 없으면 새로 생성
+- UTF-8 인코딩 사용
+- `ensure_ascii=False` 옵션으로 한글 저장
+- `indent=2` 옵션으로 가독성 확보
+
+---
+
+## 5. Flask 라우트 규칙
+
+### 라우트 정의
+
+| 경로 | 메서드 | 설명 | 인증 필요 |
+|------|--------|------|-----------|
+| `/` | GET | 로그인 페이지 표시 | 불필요 |
+| `/login` | POST | 로그인 처리 | 불필요 |
+| `/quiz` | GET | 문제풀기 페이지 | **필수** |
+| `/submit` | POST | 답안 제출 및 채점 | **필수** |
+| `/result` | GET | 결과보기 페이지 | **필수** |
+| `/logout` | GET | 로그아웃 처리 | 불필요 |
+
+### 라우트 구현 규칙
+
+#### `/` (GET) - 로그인 페이지
+```python
+@app.route('/')
+def index():
+    # 이미 로그인된 경우 /quiz로 리다이렉트
+    if 'username' in session:
+        return redirect(url_for('quiz'))
+    # 로그인 페이지 렌더링
+    return render_template('login.html')
+```
+
+#### `/login` (POST) - 로그인 처리
+```python
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    # DB에서 사용자 확인
+    # 성공 시: session['username'] = username
+    # 실패 시: 에러 메시지와 함께 login.html 렌더링
+```
+
+#### `/quiz` (GET) - 문제풀기 페이지
+```python
+@app.route('/quiz')
+def quiz():
+    # 세션 체크 (필수)
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    
+    # quiz.csv에서 5문제 랜덤 선택
+    # 세션에 문제 ID 리스트 저장
+    # quiz.html 렌더링
+```
+
+#### `/submit` (POST) - 답안 제출
+```python
+@app.route('/submit', methods=['POST'])
+def submit():
+    # 세션 체크 (필수)
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    # 답안 수신 및 채점
+    # results/{username}.json에 저장
+    # 결과를 세션에 저장
+    # 성공 응답 반환
+```
+
+#### `/result` (GET) - 결과보기 페이지
+```python
+@app.route('/result')
+def result():
+    # 세션 체크 (필수)
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    
+    # 세션에서 최근 결과 가져오기
+    # 과거 기록도 JSON 파일에서 로드
+    # result.html 렌더링
+```
+
+#### `/logout` (GET) - 로그아웃
+```python
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
+```
+
+---
+
+## 6. 핵심 비즈니스 로직
+
+### 6.1 로그인 로직
+
+#### 처리 순서
+1. 폼에서 `username`과 `password` 받기
+2. 입력값 검증 (빈 값 체크)
+3. SQLite DB에서 사용자 조회
+4. 비밀번호 일치 여부 확인
+5. 성공 시: `session['username']` 설정 후 `/quiz`로 리다이렉트
+6. 실패 시: 에러 메시지와 함께 로그인 페이지 재표시
+
+#### 구현 예시
+```python
+def authenticate_user(username, password):
+    """사용자 인증 함수"""
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", 
+                   (username, password))
+    user = cursor.fetchone()
+    conn.close()
+    return user is not None
+```
+
+#### 에러 메시지
+- 아이디 또는 비밀번호가 틀린 경우: "아이디 또는 비밀번호가 일치하지 않습니다."
+- 입력값이 비어있는 경우: "아이디와 비밀번호를 모두 입력해주세요."
+
+### 6.2 문제 출제 로직
+
+#### 요구사항
+- quiz.csv에서 **정확히 5문제** 랜덤 선택
+- **중복 없이** 선택
+- 세션에 문제 ID 리스트 저장
+- 1문제씩 순차적으로 표시
+
+#### 구현 규칙
+```python
+import pandas as pd
+import random
+
+def get_random_questions(num_questions=5):
+    """CSV에서 랜덤 문제 선택"""
+    df = pd.read_csv('quiz/quiz.csv', encoding='utf-8')
+    
+    # 문제 수가 부족한 경우 처리
+    if len(df) < num_questions:
+        raise ValueError(f"문제가 부족합니다. 필요: {num_questions}, 현재: {len(df)}")
+    
+    # 랜덤으로 인덱스 선택 (중복 없음)
+    selected_indices = random.sample(range(len(df)), num_questions)
+    
+    # 선택된 문제들을 딕셔너리 리스트로 변환
+    questions = df.iloc[selected_indices].to_dict('records')
+    
+    return questions, selected_indices
+```
+
+#### 세션 저장 데이터
+```python
+session['question_ids'] = selected_indices  # [3, 15, 7, 22, 10]
+session['current_question'] = 0  # 현재 문제 번호 (0~4)
+```
+
+#### 문제 표시 규칙
+- JavaScript로 클라이언트 측에서 1문제씩 표시
+- 서버는 5문제를 한 번에 전달
+- "다음 문제" 버튼: 1~4번 문제에 표시
+- "결과보기" 버튼: 5번 문제에 표시
+
+### 6.3 답안 제출 및 채점 로직
+
+#### 클라이언트에서 서버로 전송되는 데이터
+```javascript
+{
+  "answers": ["A", "B", "D", "C", "A"],  // 학생이 선택한 답
+  "question_ids": [3, 15, 7, 22, 10]     // 출제된 문제의 인덱스
+}
+```
+
+#### 서버 채점 로직
+```python
+def grade_quiz(answers, question_ids):
+    """답안 채점"""
+    df = pd.read_csv('quiz/quiz.csv', encoding='utf-8')
+    
+    results = []
+    score = 0
+    
+    for idx, (answer, qid) in enumerate(zip(answers, question_ids)):
+        correct_answer = df.iloc[qid]['Answer']
+        is_correct = (answer == correct_answer)
+        
+        if is_correct:
+            score += 1
+        
+        results.append({
+            'question_num': idx + 1,
+            'question_id': qid,
+            'correct': is_correct
+        })
+    
+    return score, results
+```
+
+### 6.4 결과 저장 로직
+
+#### 저장 순서
+1. 기존 JSON 파일 존재 여부 확인
+2. 존재하면 파일 읽기
+3. 새로운 시도 데이터를 `attempts` 배열에 추가
+4. 파일에 다시 저장 (UTF-8, 들여쓰기 2칸)
+
+#### 구현 예시
+```python
+import json
+import os
+from datetime import datetime
+
+def save_result(username, score, total, details):
+    """결과를 JSON 파일에 저장"""
+    filepath = f'results/{username}.json'
+    
+    # results 디렉토리가 없으면 생성
+    os.makedirs('results', exist_ok=True)
+    
+    # 새로운 시도 데이터
+    new_attempt = {
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'time': datetime.now().strftime('%H:%M:%S'),
+        'score': score,
+        'total': total,
+        'details': details
+    }
+    
+    # 기존 파일 읽기
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    else:
+        data = {
+            'username': username,
+            'attempts': []
+        }
+    
+    # 새로운 시도 추가
+    data['attempts'].append(new_attempt)
+    
+    # 파일에 저장
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+```
+
+#### 절대 금지사항
+- **기존 attempts 배열을 삭제하거나 덮어쓰기 금지**
+- 반드시 `append()` 메서드로 추가만 해야 함
+
+---
+
+## 7. 에러 핸들링
+
+### 7.1 세션 체크
+
+#### 규칙
+- `/quiz`, `/submit`, `/result` 경로는 반드시 로그인 확인
+- 미로그인 시 로그인 페이지로 리다이렉트
+
+```python
+def login_required(f):
+    """로그인 필수 데코레이터"""
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/quiz')
+@login_required
+def quiz():
+    # ...
+```
+
+### 7.2 CSV 파일 읽기 오류
+
+#### 처리해야 할 오류
+1. 파일이 존재하지 않음: `FileNotFoundError`
+2. 인코딩 오류: `UnicodeDecodeError`
+3. 필수 컬럼 누락: `KeyError`
+4. 문제 수 부족: 사용자 정의 예외
+
+```python
+try:
+    df = pd.read_csv('quiz/quiz.csv', encoding='utf-8')
+except FileNotFoundError:
+    return "quiz.csv 파일을 찾을 수 없습니다.", 500
+except UnicodeDecodeError:
+    # 다른 인코딩 시도
+    df = pd.read_csv('quiz/quiz.csv', encoding='cp949')
+except KeyError as e:
+    return f"CSV 파일에 필수 컬럼이 없습니다: {e}", 500
+```
+
+### 7.3 JSON 파일 오류
+
+#### 처리해야 할 오류
+1. JSON 파싱 오류: `json.JSONDecodeError`
+2. 파일 읽기/쓰기 권한 오류: `PermissionError`
+
+```python
+try:
+    with open(filepath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except json.JSONDecodeError:
+    # 손상된 파일인 경우 새로 시작
+    data = {'username': username, 'attempts': []}
+except FileNotFoundError:
+    # 파일이 없으면 새로 생성
+    data = {'username': username, 'attempts': []}
+```
+
+### 7.4 데이터베이스 오류
+
+#### 처리해야 할 오류
+1. 연결 실패
+2. 테이블 없음
+3. SQL 문법 오류
+
+```python
+try:
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    # ... SQL 실행
+except sqlite3.Error as e:
+    print(f"Database error: {e}")
+    return "데이터베이스 오류가 발생했습니다.", 500
+finally:
+    if conn:
+        conn.close()
+```
+
+### 7.5 폼 데이터 검증
+
+#### 검증 항목
+- 빈 값 체크
+- 데이터 타입 확인
+- 허용된 값 범위 확인
+
+```python
+username = request.form.get('username', '').strip()
+password = request.form.get('password', '').strip()
+
+if not username or not password:
+    return render_template('login.html', 
+                         error='아이디와 비밀번호를 모두 입력해주세요.')
+```
+
+---
+
+## 8. 보안 및 정책
+
+### 8.1 보안 설정
+
+#### Flask Secret Key (필수)
+```python
+app.secret_key = 'your-secret-key-here'  # 실제 운영 시 환경변수 사용
+```
+
+#### 비밀번호 저장
+- **테스트용이므로 평문 저장 허용**
+- 실제 서비스가 아니므로 해싱 불필요
+- 주석으로 테스트용임을 명시
+
+```python
+# 테스트용 애플리케이션이므로 비밀번호를 평문으로 저장합니다.
+# 실제 서비스에서는 bcrypt 또는 werkzeug.security를 사용하세요.
+```
+
+### 8.2 세션 관리
+
+#### 세션 정책
+- Flask의 기본 세션 사용 (쿠키 기반)
+- 브라우저 종료 시 세션 만료
+- 로그아웃 시 `session.clear()` 호출
+
+```python
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # XSS 방지
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF 방지
+```
+
+### 8.3 접근 제어
+
+#### 규칙
+- 로그인하지 않은 사용자는 `/`, `/login`만 접근 가능
+- 로그인한 사용자는 모든 페이지 접근 가능
+- 다른 사용자의 결과 파일 접근 불가 (username 기반 필터링)
+
+### 8.4 서비스 정책
+
+| 정책 항목 | 내용 |
+|-----------|------|
+| 서비스 범위 | 로컬 환경 (localhost)만 허용 |
+| 1회 출제 문제 수 | 5문제 (변경 불가) |
+| 문제 선택 방식 | 완전 랜덤 (중복 없음) |
+| 문제 표시 방식 | 1문제씩 순차 표시 |
+| 결과 저장 방식 | 누적 저장 (Overwrite 금지) |
+| 동시 접속자 | 고려하지 않음 (로컬 단일 사용자) |
+
+---
+
+## 9. 코딩 컨벤션
+
+### 9.1 Python 코드 스타일
+
+#### PEP 8 준수
+- 들여쓰기: 스페이스 4칸
+- 한 줄 최대 길이: 79자 (주석 72자)
+- 함수/변수명: `snake_case`
+- 클래스명: `PascalCase`
+- 상수명: `UPPER_CASE`
+
+#### 명명 규칙
+```python
+# 함수명: 동사 + 명사
+def get_random_questions():
+    pass
+
+def authenticate_user():
+    pass
+
+def save_result():
+    pass
+
+# 변수명: 명확하고 의미 있는 이름
+username = 'test'
+question_ids = [1, 2, 3]
+is_correct = True
+
+# 상수명: 대문자 + 언더스코어
+NUM_QUESTIONS = 5
+DATABASE_PATH = 'database.db'
+CSV_FILE_PATH = 'quiz/quiz.csv'
+```
+
+### 9.2 주석 규칙
+
+#### 한글 주석 사용
+```python
+def grade_quiz(answers, question_ids):
+    """
+    답안을 채점하고 결과를 반환합니다.
+    
+    Args:
+        answers (list): 학생이 선택한 답안 리스트 ['A', 'B', 'C', 'D', 'A']
+        question_ids (list): 출제된 문제의 인덱스 리스트 [3, 15, 7, 22, 10]
+    
+    Returns:
+        tuple: (점수, 상세 결과 리스트)
+    """
+    # quiz.csv 파일 읽기
+    df = pd.read_csv('quiz/quiz.csv', encoding='utf-8')
+    
+    # 각 문제 채점
+    score = 0
+    results = []
+    
+    for idx, (answer, qid) in enumerate(zip(answers, question_ids)):
+        # 정답 가져오기
+        correct_answer = df.iloc[qid]['Answer']
+        
+        # 정답 여부 확인
+        is_correct = (answer == correct_answer)
+        
+        # 점수 계산
+        if is_correct:
+            score += 1
+        
+        # 결과 저장
+        results.append({
+            'question_num': idx + 1,
+            'question_id': qid,
+            'correct': is_correct
+        })
+    
+    return score, results
+```
+
+### 9.3 HTML/CSS 스타일
+
+#### HTML
+- 들여쓰기: 스페이스 2칸
+- 태그명: 소문자
+- 속성값: 큰따옴표 사용
+- Semantic HTML 사용
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDFtoQuiz</title>
+</head>
+<body>
+  <!-- 메인 컨테이너 -->
+  <div class="container">
+    <h1>퀴즈 풀기</h1>
+  </div>
+</body>
+</html>
+```
+
+#### CSS
+- 클래스명: `kebab-case`
+- 들여쓰기: 스페이스 2칸
+- 색상: HEX 코드 사용
+
+```css
+.quiz-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.question-text {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+```
+
+### 9.4 JavaScript 스타일
+
+#### 규칙
+- `const`와 `let` 사용 (`var` 금지)
+- 함수명: `camelCase`
+- 세미콜론 사용
+- 문자열: 작은따옴표 또는 템플릿 리터럴
+
+```javascript
+// 답안 배열
+const answers = [];
+let currentQuestion = 0;
+
+// 다음 문제로 이동
+function nextQuestion() {
+  const selectedAnswer = document.querySelector('input[name="answer"]:checked');
+  
+  if (!selectedAnswer) {
+    alert('답을 선택해주세요.');
+    return;
+  }
+  
+  answers.push(selectedAnswer.value);
+  currentQuestion++;
+  
+  // 다음 문제 표시
+  showQuestion(currentQuestion);
+}
+```
+
+---
+
+## 10. 금지 사항
+
+### 절대 금지
+1. ❌ **결과 JSON 파일 Overwrite**
+   - `attempts` 배열에 반드시 `append`로 추가해야 함
+   - 기존 데이터 삭제 또는 수정 금지
+
+2. ❌ **중복 문제 출제**
+   - `random.sample()` 사용으로 중복 방지
+   - `random.choice()`를 반복 사용하면 중복 가능하므로 금지
+
+3. ❌ **세션 없이 보호된 페이지 접근 허용**
+   - `/quiz`, `/submit`, `/result`는 반드시 세션 체크
+   - 미로그인 시 무조건 로그인 페이지로 리다이렉트
+
+4. ❌ **quiz.csv 파일 구조 변경**
+   - 컬럼 추가/삭제/수정 금지
+   - 기존 파일을 있는 그대로 사용
+
+5. ❌ **비밀번호 해싱**
+   - 테스트용이므로 평문 저장
+   - 불필요한 복잡도 추가 금지
+
+### 권장하지 않음
+1. ⚠️ 전역 변수 사용
+2. ⚠️ 하드코딩된 매직 넘버
+3. ⚠️ 긴 함수 (20줄 초과)
+4. ⚠️ 중첩된 조건문 (3단계 초과)
+
+---
+
+## 11. 필수 검증 사항
+
+### 11.1 애플리케이션 시작 시
+
+#### 체크리스트
+- [ ] `quiz/quiz.csv` 파일 존재 확인
+- [ ] CSV 파일의 필수 컬럼 확인
+- [ ] `database.db` 파일이 없으면 자동 생성
+- [ ] users 테이블 생성 및 초기 데이터 삽입
+- [ ] `results/` 디렉토리 존재 확인 (없으면 생성)
+- [ ] Flask secret_key 설정 확인
+
+```python
+def initialize_app():
+    """애플리케이션 초기화"""
+    # CSV 파일 검증
+    if not os.path.exists('quiz/quiz.csv'):
+        raise FileNotFoundError("quiz.csv 파일이 없습니다.")
+    
+    # 필수 컬럼 검증
+    df = pd.read_csv('quiz/quiz.csv', encoding='utf-8')
+    required_columns = ['Question', 'Example_A', 'Example_B', 
+                       'Example_C', 'Example_D', 'Answer', 'Explanation']
+    
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"필수 컬럼이 없습니다: {col}")
+    
+    # 데이터베이스 초기화
+    if not os.path.exists('database.db'):
+        init_database()
+    
+    # results 디렉토리 생성
+    os.makedirs('results', exist_ok=True)
+```
+
+### 11.2 문제 출제 시
+
+#### 검증 항목
+- [ ] CSV 파일에 최소 5개 이상의 문제 존재
+- [ ] 선택된 문제가 정확히 5개인지 확인
+- [ ] 중복 문제가 없는지 확인
+
+```python
+# 문제 수 검증
+if len(df) < NUM_QUESTIONS:
+    return render_template('error.html', 
+                         message=f'문제가 부족합니다. (현재: {len(df)}개, 필요: {NUM_QUESTIONS}개)')
+
+# 중복 검증
+assert len(selected_indices) == len(set(selected_indices)), "중복 문제가 있습니다!"
+```
+
+### 11.3 답안 제출 시
+
+#### 검증 항목
+- [ ] 세션에 username 존재 확인
+- [ ] 제출된 답안 개수가 5개인지 확인
+- [ ] 각 답안이 A, B, C, D 중 하나인지 확인
+- [ ] question_ids가 유효한 인덱스인지 확인
+
+```python
+# 답안 개수 검증
+if len(answers) != NUM_QUESTIONS:
+    return jsonify({'error': '답안 개수가 올바르지 않습니다.'}), 400
+
+# 답안 형식 검증
+valid_answers = ['A', 'B', 'C', 'D']
+for answer in answers:
+    if answer not in valid_answers:
+        return jsonify({'error': '올바르지 않은 답안 형식입니다.'}), 400
+```
+
+### 11.4 JSON 저장 시
+
+#### 검증 항목
+- [ ] username이 비어있지 않은지 확인
+- [ ] 날짜/시간 형식이 올바른지 확인
+- [ ] details 배열의 길이가 5인지 확인
+- [ ] 파일 쓰기 권한 확인
+
+```python
+# 데이터 검증
+assert username, "username이 비어있습니다."
+assert len(details) == NUM_QUESTIONS, "details 개수가 올바르지 않습니다."
+assert 0 <= score <= NUM_QUESTIONS, "점수가 유효하지 않습니다."
+```
+
+### 11.5 세션 검증
+
+#### 규칙
+- 보호된 라우트 접근 시 항상 세션 확인
+- 세션 만료 또는 없을 경우 로그인 페이지로 리다이렉트
+
+```python
+# 각 라우트에서
+if 'username' not in session:
+    return redirect(url_for('index'))
+```
+
+---
+
+## 12. 테스트 가이드
+
+### 12.1 테스트 계정
+
+#### 기본 계정
+- **아이디**: `홍길동`
+- **비밀번호**: `1111`
+
+#### 추가 계정 생성 (선택)
+```sql
+INSERT INTO users (username, password) VALUES ('김철수', '2222');
+INSERT INTO users (username, password) VALUES ('이영희', '3333');
+```
+
+### 12.2 실행 방법
+
+#### 1단계: 패키지 설치
+```bash
+pip install -r requirements.txt
+```
+
+#### 2단계: 애플리케이션 실행
+```bash
+python app.py
+```
+
+#### 3단계: 브라우저 접속
+```
+http://localhost:5000
+```
+
+### 12.3 테스트 시나리오
+
+#### 시나리오 1: 정상 플로우
+1. 로그인 페이지 접속
+2. 홍길동/1111로 로그인
+3. 문제풀기 페이지에서 5문제 풀이
+4. 각 문제마다 답 선택 후 "다음 문제" 클릭
+5. 마지막 문제에서 "결과보기" 클릭
+6. 결과 페이지에서 점수 확인
+7. "문제풀기" 버튼 클릭하여 재시도
+8. 결과 페이지에서 과거 기록 확인
+
+#### 시나리오 2: 로그인 실패
+1. 잘못된 아이디/비밀번호 입력
+2. 에러 메시지 표시 확인
+
+#### 시나리오 3: 세션 만료
+1. 로그인 후 브라우저 종료
+2. 브라우저 재실행 후 `/quiz` 직접 접속 시도
+3. 로그인 페이지로 리다이렉트 확인
+
+#### 시나리오 4: 결과 누적 저장
+1. 첫 번째 시도 완료
+2. "문제풀기"로 두 번째 시도
+3. 결과 페이지에서 두 시도 모두 표시 확인
+4. `results/홍길동.json` 파일 직접 열어서 attempts 배열 확인
+
+### 12.4 확인 사항
+
+#### 파일 생성 확인
+- [ ] `database.db` 생성 확인
+- [ ] `results/` 디렉토리 생성 확인
+- [ ] `results/홍길동.json` 생성 확인
+
+#### 기능 동작 확인
+- [ ] 로그인/로그아웃 정상 동작
+- [ ] 5문제 랜덤 출제 (중복 없음)
+- [ ] 답안 제출 및 채점 정상 동작
+- [ ] 결과 파일 누적 저장 확인
+- [ ] 과거 기록 표시 확인
+
+#### UI/UX 확인
+- [ ] Bootstrap 스타일 적용 확인
+- [ ] 반응형 디자인 (모바일 대응)
+- [ ] 에러 메시지 표시 확인
+- [ ] 문제 번호 표시 (1/5, 2/5, ...)
+- [ ] 정답/오답 색상 구분
+
+---
+
+## 📌 주요 참고사항
+
+### 개발 우선순위
+1. **핵심 기능 구현** (로그인, 문제풀기, 결과보기)
+2. **데이터 정합성** (JSON 누적 저장, 중복 방지)
+3. **에러 핸들링** (세션 체크, 파일 검증)
+4. **UI/UX 개선** (Bootstrap, 반응형)
+5. **코드 품질** (주석, 가독성, 컨벤션)
+
+### 디버깅 팁
+```python
+# Flask 디버그 모드 활성화
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+```
+
+### 로깅 설정
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+logger.info("애플리케이션 시작")
+```
+
+---
+
+## 🎯 개발 완료 체크리스트
+
+개발이 완료되었다고 판단하려면 다음 항목을 모두 확인해야 합니다:
+
+### 파일 구조
+- [ ] `app.py` 생성 완료
+- [ ] `requirements.txt` 생성 완료
+- [ ] `templates/login.html` 생성 완료
+- [ ] `templates/quiz.html` 생성 완료
+- [ ] `templates/result.html` 생성 완료
+- [ ] `static/css/style.css` 생성 완료
+- [ ] `static/js/quiz.js` 생성 완료
+
+### 기능 구현
+- [ ] 로그인 인증 동작
+- [ ] 5문제 랜덤 출제 (중복 없음)
+- [ ] 1문제씩 순차 표시
+- [ ] 답안 제출 및 채점
+- [ ] 결과 JSON 파일 누적 저장
+- [ ] 과거 기록 표시
+- [ ] 로그아웃 기능
+
+### 데이터 검증
+- [ ] CSV 파일 컬럼 검증
+- [ ] 세션 기반 인증 확인
+- [ ] JSON 파일 형식 검증
+- [ ] 에러 핸들링 구현
+
+### 테스트
+- [ ] 정상 플로우 테스트 통과
+- [ ] 로그인 실패 케이스 확인
+- [ ] 결과 누적 저장 확인
+- [ ] 세션 만료 처리 확인
+
+---
+
+## 📚 추가 자료
+
+### Flask 공식 문서
+- 세션: https://flask.palletsprojects.com/en/3.0.x/quickstart/#sessions
+- 템플릿: https://flask.palletsprojects.com/en/3.0.x/templating/
+
+### Bootstrap 5 문서
+- https://getbootstrap.com/docs/5.0/getting-started/introduction/
+
+### pandas 문서
+- CSV 읽기: https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html
+
+---
+
+**이 문서는 PDFtoQuiz 프로젝트의 개발 가이드라인입니다. 모든 AI 어시스턴트는 이 규칙을 엄격히 준수하여 꼼꼼하고 오류 없는 코드를 작성해야 합니다.**

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# 환경변수
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드 파일
+*.exe
+*.spec
+app.exe
+
+# 데이터베이스 (배포 시 새로 생성)
+database.db
+
+# 결과 파일 (배포 시 새로 생성)
+results/*.json
+!results/.gitkeep
+
+# 로그
+*.log
